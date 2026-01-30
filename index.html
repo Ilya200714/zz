@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>TITAN ETERNAL - FINAL DESTINY</title>
+    <style>
+        /* ТВОИ СТИЛИ ОСТАЮТСЯ ТАКИМИ ЖЕ */
+        :root { 
+            --bg: #020205; --side: rgba(10, 10, 15, 0.95); --card: rgba(20, 20, 35, 0.8); 
+            --accent: #00f2ff; --green: #39ff14; --red: #ff3131; --text: #e0e0ff; 
+        }
+        * { box-sizing: border-box; font-family: 'Orbitron', sans-serif; }
+        body { margin: 0; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+        #bg-canvas { position: fixed; inset: 0; z-index: -1; opacity: 0.3; pointer-events: none; }
+        .win { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 9000; background: var(--bg); }
+        #app { display: none; flex: 1; flex-direction: row; height: calc(100vh - 80px); }
+        .stage { flex: 1; display: flex; flex-wrap: wrap; align-content: flex-start; padding: 20px; gap: 20px; overflow-y: auto; }
+        .u-box { width: 320px; aspect-ratio: 16/9; background: var(--card); border-radius: 12px; position: relative; border: 2px solid var(--accent); overflow: hidden; box-shadow: 0 0 15px rgba(0,242,255,0.2); transition: 0.3s; }
+        .u-box.fullscreen { position: fixed; top: 0; left: 0; width: 100vw; height: calc(100vh - 80px); z-index: 5000; border: none; border-radius: 0; }
+        video { width: 100%; height: 100%; object-fit: cover; background: #000; display: none; }
+        video.active { display: block; }
+        .u-ava { width: 80px; height: 80px; border-radius: 50%; background: #111 center/cover; border: 3px solid var(--accent); position: absolute; z-index: 5; top: 50%; left: 50%; transform: translate(-50%, -50%); transition: 0.3s; }
+        .u-ava.hidden { opacity: 0; visibility: hidden; }
+        .pulse-ring { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85px; height: 85px; border-radius: 50%; border: 4px solid var(--accent); opacity: 0; z-index: 4; pointer-events: none; transition: 0.1s; }
+        .u-nick { position: absolute; bottom: 8px; left: 8px; font-size: 10px; background: rgba(0,0,0,0.8); padding: 3px 8px; border-radius: 4px; z-index: 10; border: 1px solid var(--accent); }
+        .vol-ctrl { position: absolute; top: 8px; left: 8px; z-index: 20; display: flex; align-items: center; background: rgba(0,0,0,0.6); padding: 2px 5px; border-radius: 10px; }
+        .vol-slider { width: 60px; height: 4px; cursor: pointer; accent-color: var(--accent); }
+        .fs-btn { position: absolute; top: 8px; right: 8px; z-index: 20; background: var(--accent); color: #000; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; }
+        .side { width: 340px; background: var(--side); border-left: 2px solid var(--accent); display: flex; flex-direction: column; }
+        #user-list { padding: 15px; border-bottom: 1px solid #222; background: rgba(0,0,0,0.3); }
+        .u-item { font-size: 12px; margin-bottom: 5px; color: var(--green); display: flex; align-items: center; gap: 8px; }
+        #msgs { flex: 1; overflow-y: auto; padding: 15px; scrollbar-width: none; }
+        .m { background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; margin-bottom: 10px; border-left: 3px solid var(--accent); font-size: 11px; }
+        .m img { max-width: 100%; border-radius: 8px; margin-top: 5px; border: 1px solid var(--accent); }
+        .chat-tools { padding: 12px; background: #000; border-top: 1px solid #222; }
+        .dock { height: 80px; background: #000; border-top: 2px solid var(--accent); display: flex; align-items: center; justify-content: center; gap: 20px; }
+        .icn { width: 50px; height: 50px; border-radius: 50%; border: 1px solid var(--accent); background: none; color: #fff; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; }
+        .icn.on { background: var(--green); color: #000; box-shadow: 0 0 15px var(--green); }
+        .card { background: #0a0a15; padding: 35px; border-radius: 20px; border: 2px solid var(--accent); text-align: center; width: 350px; }
+        @keyframes fly { from{opacity:1; transform:translateY(0);} to{opacity:0; transform:translateY(-200px);} }
+        
+        /* Новые стили */
+        .ws-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #111;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 10px;
+            z-index: 10000;
+        }
+        .ws-status.connected { border: 1px solid var(--green); color: var(--green); }
+        .ws-status.disconnected { border: 1px solid var(--red); color: var(--red); }
+    </style>
+</head>
+<body>
+    <canvas id="bg-canvas"></canvas>
+    <div id="ws-status" class="ws-status disconnected">● OFFLINE</div>
+    
+    <div id="w-auth" class="win">
+        <div class="card">
+            <h1 style="color:var(--accent)">TITAN FINAL</h1>
+            <div id="p-ava" style="width:90px; height:90px; border-radius:50%; border:2px solid var(--accent); margin:15px auto; background:#111 center/cover"></div>
+            <input type="file" id="f-ava" hidden onchange="toB64(this, 'p-ava')">
+            <button onclick="document.getElementById('f-ava').click()" style="background:none; border:1px solid; color:var(--accent); cursor:pointer; padding:5px; margin-bottom:15px; font-size:10px">ОБЛИК</button>
+            <input type="text" id="i-nick" placeholder="НИК" style="width:100%; padding:10px; background:#000; color:#fff; border:1px solid #333;">
+            <button onclick="register()" style="width:100%; padding:15px; background:var(--accent); border:none; border-radius:10px; font-weight:bold; margin-top:15px; cursor:pointer">ВХОД</button>
+        </div>
+    </div>
+    
+    <div id="w-lobby" class="win" style="display:none">
+        <div class="card">
+            <h2 id="l-nick" style="color:var(--green)"></h2>
+            <input type="text" id="i-room" placeholder="ID КОМНАТЫ (например: titan-room)" style="width:100%; padding:10px; background:#000; color:#fff; border:1px solid #333;">
+            <p style="font-size: 9px; color: #888;">Оба введите один ID комнаты</p>
+            <button onclick="start()" style="width:100%; padding:15px; background:var(--green); border:none; border-radius:10px; font-weight:bold; cursor:pointer">ВОЙТИ В КОМНАТУ</button>
+            
+            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #333;">
+                <p style="font-size: 10px; color: var(--accent);">Инструкция:</p>
+                <ol style="font-size: 8px; text-align: left; color: #aaa;">
+                    <li>Введите одинаковый ID комнаты с другом</li>
+                    <li>Нажмите "ВОЙТИ В КОМНАТУ"</li>
+                    <li>Подождите подключения друга</li>
+                    <li>Включите камеру/микрофон</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+    
+    <div id="app">
+        <div class="stage" id="stage"></div>
+        <div class="side">
+            <div id="user-list">
+                <div style="font-size: 10px; color: var(--accent); margin-bottom: 10px;">В КОРПУСЕ:</div>
+                <div id="u-items"></div>
+            </div>
+            <div id="msgs"></div>
+            <div class="chat-tools">
+                <div style="display:flex; gap:10px; justify-content:center; margin-bottom:10px;">
+                    <button class="icn" style="width:35px; height:35px; font-size:15px" onclick="sendEmoji('🔥')">🔥</button>
+                    <button class="icn" style="width:35px; height:35px; font-size:15px" onclick="sendSFX()">📢</button>
+                    <button class="icn" style="width:35px; height:35px; font-size:15px" onclick="document.getElementById('f-send').click()">🖼️</button>
+                    <input type="file" id="f-send" hidden accept="image/*" onchange="sendFile(this)">
+                </div>
+                <div style="display:flex; gap:5px">
+                    <input type="text" id="c-in" placeholder="Связь..." onkeypress="if(event.key==='Enter') sendMsg()" style="flex:1; padding:10px; background:#111; border:1px solid #333; color:#fff;">
+                    <button onclick="sendMsg()" style="background:var(--accent); border:none; padding:10px; border-radius:5px; cursor:pointer; font-weight:bold">></button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="dock" id="main-dock" style="display:none">
+        <button id="b-mic" class="icn" onclick="toggleMedia('audio')">🎙️</button>
+        <button id="b-cam" class="icn" onclick="toggleMedia('video')">📷</button>
+        <button id="b-scr" class="icn" onclick="shareScreen()">🖥️</button>
+        <button class="icn" style="background:var(--red)" onclick="leaveRoom()">🚪</button>
+    </div>
+
+    <script>
+        // Глобальные переменные
+        let ws = null;
+        let myUserId = null;
+        let currentRoom = null;
+        let myStream = new MediaStream();
+        let screenStream = null;
+        let peerConnections = {};
+        let profile = JSON.parse(localStorage.getItem('titan_p')) || {
+            nick: '',
+            ava: '',
+            id: Math.random().toString(36).substr(2, 6)
+        };
+        
+        const sfx = {
+            horn: new Audio('https://www.myinstants.com/media/sounds/mlg-airhorn.mp3'),
+            msg: new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3')
+        };
+        
+        // Инициализация
+        if (profile.nick) showLobby();
+        
+        function toB64(i, t) {
+            const r = new FileReader();
+            r.onload = e => {
+                window.tmpA = e.target.result;
+                document.getElementById(t).style.backgroundImage = `url(${e.target.result})`;
+            };
+            r.readAsDataURL(i.files[0]);
+        }
+        
+        function register() {
+            const n = document.getElementById('i-nick').value;
+            if (!n) return alert('Введите ник!');
+            profile.nick = n;
+            if (window.tmpA) profile.ava = window.tmpA;
+            localStorage.setItem('titan_p', JSON.stringify(profile));
+            location.reload();
+        }
+        
+        function showLobby() {
+            document.getElementById('w-auth').style.display = 'none';
+            document.getElementById('w-lobby').style.display = 'flex';
+            document.getElementById('l-nick').innerText = "БОЕЦ: " + profile.nick;
+        }
+        
+        function start() {
+            currentRoom = document.getElementById('i-room').value.trim();
+            if (!currentRoom) return alert('Введите ID комнаты!');
+            
+            myUserId = profile.id + '-' + Date.now();
+            
+            // Подключаемся к WebSocket серверу
+            connectWebSocket();
+        }
+        
+        function connectWebSocket() {
+            // Получаем адрес сервера (Railway автоматически установит переменную окружения)
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                updateStatus(true);
+                
+                // Присоединяемся к комнате
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    roomId: currentRoom,
+                    userId: myUserId,
+                    nick: profile.nick
+                }));
+                
+                // Показываем интерфейс
+                document.querySelectorAll('.win').forEach(w => w.style.display = 'none');
+                document.getElementById('app').style.display = 'flex';
+                document.getElementById('main-dock').style.display = 'flex';
+                
+                addBox(profile.nick, profile.ava, myUserId, true);
+                updateUserList(myUserId, profile.nick, true);
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Received:', data);
+                    
+                    switch(data.type) {
+                        case 'joined':
+                            handleJoined(data);
+                            break;
+                        case 'user-joined':
+                            handleUserJoined(data);
+                            break;
+                        case 'user-left':
+                            handleUserLeft(data);
+                            break;
+                        case 'signal':
+                            handleSignal(data);
+                            break;
+                        case 'chat':
+                            handleChatMessage(data);
+                            break;
+                    }
+                } catch (err) {
+                    console.error('Error parsing message:', err);
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateStatus(false);
+                setTimeout(connectWebSocket, 3000); // Переподключение через 3 секунды
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+        
+        function updateStatus(connected) {
+            const statusEl = document.getElementById('ws-status');
+            statusEl.textContent = connected ? '● ONLINE' : '● OFFLINE';
+            statusEl.className = connected ? 'ws-status connected' : 'ws-status disconnected';
+        }
+        
+        function handleJoined(data) {
+            console.log('Joined room:', data.users);
+            
+            // Добавляем существующих пользователей
+            data.users.forEach(user => {
+                if (user.userId !== myUserId) {
+                    addBox(user.nick, '', user.userId);
+                    updateUserList(user.userId, user.nick, true);
+                    createPeerConnection(user.userId);
+                }
+            });
+        }
+        
+        function handleUserJoined(data) {
+            const { userId, nick } = data;
+            
+            if (userId === myUserId) return;
+            
+            console.log('User joined:', nick, userId);
+            
+            addBox(nick, '', userId);
+            updateUserList(userId, nick, true);
+            createPeerConnection(userId);
+        }
+        
+        function handleUserLeft(data) {
+            const { userId } = data;
+            
+            console.log('User left:', userId);
+            
+            // Закрываем peer connection
+            if (peerConnections[userId]) {
+                peerConnections[userId].close();
+                delete peerConnections[userId];
+            }
+            
+            // Удаляем из интерфейса
+            document.getElementById('u-' + userId)?.remove();
+            document.getElementById('scr-' + userId)?.remove();
+            updateUserList(userId, '', false);
+        }
+        
+        function createPeerConnection(otherUserId) {
+            if (peerConnections[otherUserId]) return;
+            
+            const configuration = {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' }
+                ]
+            };
+            
+            const pc = new RTCPeerConnection(configuration);
+            peerConnections[otherUserId] = pc;
+            
+            // Добавляем наши треки
+            myStream.getTracks().forEach(track => {
+                pc.addTrack(track, myStream);
+            });
+            
+            // Обработка ICE кандидатов
+            pc.onicecandidate = (event) => {
+                if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'signal',
+                        to: otherUserId,
+                        signal: {
+                            type: 'candidate',
+                            candidate: event.candidate
+                        }
+                    }));
+                }
+            };
+            
+            // Получение удаленного потока
+            pc.ontrack = (event) => {
+                const stream = event.streams[0];
+                console.log('Received remote stream from', otherUserId);
+                pipe(otherUserId, stream);
+            };
+            
+            // Создаем offer
+            pc.createOffer()
+                .then(offer => pc.setLocalDescription(offer))
+                .then(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'signal',
+                            to: otherUserId,
+                            signal: {
+                                type: 'offer',
+                                sdp: pc.localDescription
+                            }
+                        }));
+                    }
+                })
+                .catch(error => console.error('Error creating offer:', error));
+        }
+        
+        function handleSignal(data) {
+            const { from, signal } = data;
+            const pc = peerConnections[from];
+            
+            if (!pc) {
+                console.log('No peer connection for', from);
+                return;
+            }
+            
+            if (signal.type === 'offer') {
+                pc.setRemoteDescription(new RTCSessionDescription(signal.sdp))
+                    .then(() => pc.createAnswer())
+                    .then(answer => pc.setLocalDescription(answer))
+                    .then(() => {
+                        ws.send(JSON.stringify({
+                            type: 'signal',
+                            to: from,
+                            signal: {
+                                type: 'answer',
+                                sdp: pc.localDescription
+                            }
+                        }));
+                    })
+                    .catch(error => console.error('Error handling offer:', error));
+            } else if (signal.type === 'answer') {
+                pc.setRemoteDescription(new RTCSessionDescription(signal.sdp))
+                    .catch(error => console.error('Error setting remote description:', error));
+            } else if (signal.type === 'candidate') {
+                pc.addIceCandidate(new RTCIceCandidate(signal.candidate))
+                    .catch(error => console.error('Error adding ICE candidate:', error));
+            }
+        }
+        
+        function handleChatMessage(data) {
+            const { fromNick, message } = data;
+            pushChat(fromNick, message);
+            sfx.msg.play();
+        }
+        
+        // Остальные функции (addBox, updateUserList, pipe, toggleMedia и т.д.)
+        // остаются почти такими же, но адаптируются под новую систему
+        
+        function addBox(nick, ava, id, isMe = false, isScr = false) {
+            const bId = isScr ? 'scr-' + id : 'u-' + id;
+            if (document.getElementById(bId)) return;
+            
+            const b = document.createElement('div');
+            b.className = isScr ? 'u-box screen' : 'u-box';
+            b.id = bId;
+            b.innerHTML = `
+                ${!isScr ? `<div class="u-ava" id="ava-${id}" style="background-image:url(${ava})"></div>` : ''}
+                <div class="pulse-ring" id="p-${id}"></div>
+                <div class="u-nick">${isScr ? '🖥️ ' + nick : nick}</div>
+                ${!isMe ? `<div class="vol-ctrl">🔈<input type="range" class="vol-slider" min="0" max="1" step="0.1" value="1" oninput="setVol('${bId}', this.value)"></div>` : ''}
+                ${isScr ? `<button class="fs-btn" onclick="toggleFS('${bId}')">FS</button>` : ''}
+                <video id="vid-${bId}" autoplay playsinline ${isMe ? 'muted' : ''}></video>
+            `;
+            document.getElementById('stage').appendChild(b);
+        }
+        
+        function updateUserList(id, nick, add) {
+            const container = document.getElementById('u-items');
+            
+            if (add) {
+                if (!document.getElementById('item-' + id)) {
+                    const item = document.createElement('div');
+                    item.className = 'u-item';
+                    item.id = 'item-' + id;
+                    item.textContent = '● ' + nick;
+                    container.appendChild(item);
+                }
+            } else {
+                document.getElementById('item-' + id)?.remove();
+            }
+        }
+        
+        function pipe(id, s) {
+            const isScr = s.getVideoTracks()[0]?.label.toLowerCase().includes('screen');
+            const bId = isScr ? 'scr-' + id : 'u-' + id;
+            const v = document.getElementById('vid-' + bId);
+            
+            if (!v) {
+                const user = document.querySelector(`#u-${id} .u-nick`)?.textContent || 'Друг';
+                addBox(user, '', id, false, isScr);
+            }
+            
+            const vUpdated = document.getElementById('vid-' + bId);
+            if (vUpdated) {
+                vUpdated.srcObject = s;
+                vUpdated.onloadedmetadata = () => {
+                    vUpdated.classList.add('active');
+                    if (!isScr) document.getElementById('ava-' + id)?.classList.add('hidden');
+                };
+            }
+            
+            // Анализ аудио для анимации
+            if (!isScr && s.getAudioTracks().length > 0) {
+                const actx = new (window.AudioContext || window.webkitAudioContext)();
+                const an = actx.createAnalyser();
+                actx.createMediaStreamSource(s).connect(an);
+                const data = new Uint8Array(an.frequencyBinCount);
+                
+                const loop = () => {
+                    an.getByteFrequencyData(data);
+                    const vol = data.reduce((a, b) => a + b) / data.length;
+                    const ring = document.getElementById('p-' + id);
+                    if (ring) {
+                        ring.style.opacity = vol > 10 ? "1" : "0";
+                        ring.style.transform = `translate(-50%, -50%) scale(${1 + vol / 30})`;
+                    }
+                    requestAnimationFrame(loop);
+                };
+                loop();
+            }
+        }
+        
+        async function toggleMedia(type) {
+            const btn = document.getElementById(type === 'video' ? 'b-cam' : 'b-mic');
+            
+            if (myStream.getTracks().filter(tr => tr.kind === type && tr.enabled).length === 0) {
+                try {
+                    const constraints = type === 'video' ? { video: true } : { audio: true };
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    
+                    stream.getTracks().forEach(track => {
+                        myStream.addTrack(track);
+                        
+                        // Добавляем трек ко всем peer connections
+                        Object.values(peerConnections).forEach(pc => {
+                            pc.addTrack(track, myStream);
+                        });
+                    });
+                    
+                    btn.classList.add('on');
+                    
+                    // Обновляем свое видео
+                    updateLocalVideo();
+                } catch (err) {
+                    console.error('Error accessing media:', err);
+                    alert(`Не удалось получить доступ к ${type === 'video' ? 'камере' : 'микрофону'}`);
+                }
+            } else {
+                // Переключаем существующие треки
+                myStream.getTracks()
+                    .filter(tr => tr.kind === type)
+                    .forEach(tr => {
+                        tr.enabled = !tr.enabled;
+                        if (tr.enabled) btn.classList.add('on');
+                        else btn.classList.remove('on');
+                    });
+                
+                updateLocalVideo();
+            }
+        }
+        
+        function updateLocalVideo() {
+            const myV = document.getElementById('vid-u-' + myUserId);
+            const myAva = document.getElementById('ava-' + myUserId);
+            
+            if (myV && myAva) {
+                myV.srcObject = myStream;
+                if (myStream.getVideoTracks().some(t => t.enabled)) {
+                    myV.classList.add('active');
+                    myAva.classList.add('hidden');
+                } else {
+                    myV.classList.remove('active');
+                    myAva.classList.remove('hidden');
+                }
+            }
+        }
+        
+        function setVol(bId, v) {
+            const vid = document.getElementById('vid-' + bId);
+            if (vid) vid.volume = v;
+        }
+        
+        function toggleFS(id) {
+            const el = document.getElementById(id);
+            el.classList.toggle('fullscreen');
+        }
+        
+        async function shareScreen() {
+            const btn = document.getElementById('b-scr');
+            
+            if (!screenStream) {
+                try {
+                    screenStream = await navigator.mediaDevices.getDisplayMedia({
+                        video: { cursor: "always" },
+                        audio: false
+                    });
+                    
+                    addBox(profile.nick, '', myUserId, true, true);
+                    const sv = document.getElementById('vid-scr-' + myUserId);
+                    sv.srcObject = screenStream;
+                    sv.classList.add('active');
+                    btn.classList.add('on');
+                    
+                    // Отправляем экран всем подключенным
+                    Object.values(peerConnections).forEach(pc => {
+                        screenStream.getTracks().forEach(track => {
+                            pc.addTrack(track, screenStream);
+                        });
+                    });
+                    
+                    screenStream.getVideoTracks()[0].onended = () => {
+                        screenStream.getTracks().forEach(t => t.stop());
+                        screenStream = null;
+                        btn.classList.remove('on');
+                        document.getElementById('scr-' + myUserId)?.remove();
+                    };
+                } catch (err) {
+                    console.error('Error sharing screen:', err);
+                }
+            } else {
+                screenStream.getTracks().forEach(t => t.stop());
+                screenStream = null;
+                btn.classList.remove('on');
+                document.getElementById('scr-' + myUserId)?.remove();
+            }
+        }
+        
+        function sendMsg() {
+            const input = document.getElementById('c-in');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'chat',
+                    message: message
+                }));
+            }
+            
+            pushChat("Я", message);
+            input.value = '';
+        }
+        
+        function sendFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = e => {
+                pushChat("Я", `<img src="${e.target.result}">`);
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        function pushChat(n, m) {
+            const container = document.getElementById('msgs');
+            container.innerHTML += `<div class="m"><b>${n}</b>: ${m}</div>`;
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function sendEmoji(v) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'chat',
+                    message: v
+                }));
+            }
+            pushChat("Я", v);
+            showFly(v);
+        }
+        
+        function sendSFX() {
+            sfx.horn.play();
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'chat',
+                    message: '📢 SOUND HORN!'
+                }));
+            }
+        }
+        
+        function showFly(v) {
+            const e = document.createElement('div');
+            e.innerText = v;
+            e.style.position = 'fixed';
+            e.style.bottom = '100px';
+            e.style.left = Math.random() * 80 + '%';
+            e.style.fontSize = '40px';
+            e.style.animation = 'fly 2s forwards';
+            e.style.zIndex = '9999';
+            document.body.appendChild(e);
+            setTimeout(() => e.remove(), 2000);
+        }
+        
+        function leaveRoom() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'leave' }));
+                ws.close();
+            }
+            
+            // Закрываем все peer connections
+            Object.values(peerConnections).forEach(pc => pc.close());
+            peerConnections = {};
+            
+            // Останавливаем медиа потоки
+            myStream.getTracks().forEach(track => track.stop());
+            if (screenStream) screenStream.getTracks().forEach(track => track.stop());
+            
+            location.reload();
+        }
+        
+        // Фоновые звезды (остаются как были)
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        let pts = [];
+        
+        window.onresize = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        };
+        window.onresize();
+        
+        for (let i = 0; i < 60; i++) {
+            pts.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                s: Math.random() * 1.5
+            });
+        }
+        
+        function anim() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "#00f2ff";
+            pts.forEach(p => {
+                p.y -= p.s;
+                if (p.y < 0) {
+                    p.y = canvas.height;
+                    p.x = Math.random() * canvas.width;
+                }
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.s, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            requestAnimationFrame(anim);
+        }
+        anim();
+    </script>
+</body>
+</html>
