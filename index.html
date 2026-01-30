@@ -175,32 +175,37 @@
         }
         
         function connectWebSocket() {
-            // Получаем адрес сервера (Railway автоматически установит переменную окружения)
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}`;
-            
-            ws = new WebSocket(wsUrl);
-            
-            ws.onopen = () => {
-                console.log('WebSocket connected');
-                updateStatus(true);
-                
-                // Присоединяемся к комнате
-                ws.send(JSON.stringify({
-                    type: 'join',
-                    roomId: currentRoom,
-                    userId: myUserId,
-                    nick: profile.nick
-                }));
-                
-                // Показываем интерфейс
-                document.querySelectorAll('.win').forEach(w => w.style.display = 'none');
-                document.getElementById('app').style.display = 'flex';
-                document.getElementById('main-dock').style.display = 'flex';
-                
-                addBox(profile.nick, profile.ava, myUserId, true);
-                updateUserList(myUserId, profile.nick, true);
-            };
+    // Определяем правильный WebSocket URL
+    const isHttps = window.location.protocol === 'https:';
+    const protocol = isHttps ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    
+    console.log('Connecting to WebSocket:', wsUrl);
+    
+    ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+        console.log('WebSocket connected successfully');
+        updateStatus(true);
+        
+        // Присоединяемся к комнате
+        ws.send(JSON.stringify({
+            type: 'join',
+            roomId: currentRoom,
+            userId: myUserId,
+            nick: profile.nick
+        }));
+        
+        // Показываем интерфейс
+        document.querySelectorAll('.win').forEach(w => w.style.display = 'none');
+        document.getElementById('app').style.display = 'flex';
+        document.getElementById('main-dock').style.display = 'flex';
+        
+        addBox(profile.nick, profile.ava, myUserId, true);
+        updateUserList(myUserId, profile.nick, true);
+    };
+    
+    // ... остальной код без изменений
             
             ws.onmessage = (event) => {
                 try {

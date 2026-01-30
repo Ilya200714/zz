@@ -5,6 +5,22 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Добавляем заголовки CSP
+app.use((req, res, next) => {
+    res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'self'; " +
+        "img-src 'self' data: https: http: blob:; " +
+        "media-src 'self' blob:; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "font-src 'self' https://fonts.gstatic.com; " +
+        "connect-src 'self' wss: ws:; " +
+        "frame-src 'self'"
+    );
+    next();
+});
+
 // Раздаем статические файлы
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -23,8 +39,14 @@ const wss = new WebSocket.Server({ server });
 const rooms = {}; // { roomId: [клиенты] }
 const clients = {}; // { ws: { roomId, userId, nick } }
 
-wss.on('connection', (ws) => {
-    console.log('New client connected');
+wss.on('connection', (ws, req) => {
+    console.log('New client connected from:', req.socket.remoteAddress);
+    
+    // Добавляем обработку origin если нужно
+    const origin = req.headers.origin;
+    if (origin && !origin.includes('railway')) {
+        console.log('Connection from non-railway origin:', origin);
+    }
     
     ws.on('message', (message) => {
         try {
@@ -53,6 +75,10 @@ wss.on('connection', (ws) => {
     ws.on('close', () => {
         handleLeave(ws);
         console.log('Client disconnected');
+    });
+    
+    ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
     });
 });
 
@@ -167,3 +193,18 @@ function handleLeave(ws) {
     
     console.log(`${userId} left room ${roomId}`);
 }
+
+// Обработка ошибок сервера
+server.on('error', (error) => {
+    console.error('Server error:', error);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully');
+    wss.close();
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
