@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 TITAN VIDEOCHAT</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: Arial, sans-serif; 
+            background: #0a0a0a; 
+            color: #00ffea; 
+            height: 100vh; 
+            overflow: hidden;
+        }
+        
+        /* Контейнеры */
+        .container { 
+            position: absolute; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            display: flex; 
+            flex-direction: column;
+        }
+        
+        /* Шапка */
+        .header {
+            background: #111;
+            padding: 15px;
+            border-bottom: 2px solid #00ffea;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .status.online { background: #0a5; }
+        .status.offline { background: #a00; }
+        
+        /* Основной контент */
+        .main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        /* Видео сетка */
+        .videos {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 10px;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        
+        .video-box {
+            background: #222;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            border: 2px solid #00aaff;
+        }
+        
+        video {
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: block;
+        }
+        
+        .video-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.7);
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        
+        /* Боковая панель */
+        .sidebar {
+            width: 300px;
+            background: #111;
+            border-left: 2px solid #00ffea;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .users {
+            padding: 10px;
+            border-bottom: 1px solid #333;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .user-item {
+            padding: 5px;
+            margin: 2px 0;
+            background: #222;
+            border-radius: 4px;
+        }
+        
+        .chat {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .message {
+            margin: 5px 0;
+            padding: 8px;
+            background: #222;
+            border-radius: 6px;
+            border-left: 3px solid #00aaff;
+        }
+        
+        .chat-input {
+            padding: 10px;
+            background: #000;
+            border-top: 1px solid #333;
+        }
+        
+        .chat-input input {
+            width: 100%;
+            padding: 10px;
+            background: #222;
+            border: 1px solid #00aaff;
+            color: #fff;
+            border-radius: 4px;
+        }
+        
+        /* Панель управления */
+        .controls {
+            background: #111;
+            padding: 15px;
+            border-top: 2px solid #00ffea;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+        
+        .btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: 2px solid #00ffea;
+            background: #222;
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .btn.active {
+            background: #0a5;
+        }
+        
+        .btn.exit {
+            background: #a00;
+            border-color: #f00;
+        }
+        
+        /* Экран входа */
+        .login-screen {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: #0a0a0a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .login-box {
+            background: #111;
+            padding: 30px;
+            border-radius: 10px;
+            border: 2px solid #00ffea;
+            width: 350px;
+            text-align: center;
+        }
+        
+        .login-box input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: #222;
+            border: 1px solid #00aaff;
+            color: #fff;
+            border-radius: 4px;
+        }
+        
+        .login-box button {
+            width: 100%;
+            padding: 12px;
+            background: #00ffea;
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        
+        /* Скрытые элементы */
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- Экран входа -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-box">
+            <h1 style="color: #00ffea; margin-bottom: 20px;">🚀 TITAN CHAT</h1>
+            <input type="text" id="username" placeholder="Введите ваш ник" autocomplete="off">
+            <input type="text" id="roomId" placeholder="ID комнаты" value="titan" autocomplete="off">
+            <button onclick="login()">ПОДКЛЮЧИТЬСЯ</button>
+            <p style="margin-top: 15px; font-size: 12px; color: #888;">
+                Введите одинаковый ID комнаты с другом и нажмите кнопку
+            </p>
+        </div>
+    </div>
+    
+    <!-- Основной интерфейс -->
+    <div id="mainApp" class="container hidden">
+        <!-- Шапка -->
+        <div class="header">
+            <h2>🎮 TITAN VIDEOCHAT</h2>
+            <div id="status" class="status offline">OFFLINE</div>
+        </div>
+        
+        <!-- Основной контент -->
+        <div class="main">
+            <!-- Видео сетка -->
+            <div id="videos" class="videos"></div>
+            
+            <!-- Боковая панель -->
+            <div class="sidebar">
+                <div class="users">
+                    <h4 style="margin-bottom: 10px;">👥 Участники:</h4>
+                    <div id="userList"></div>
+                </div>
+                <div class="chat">
+                    <h4 style="margin-bottom: 10px;">💬 Чат:</h4>
+                    <div id="messages"></div>
+                </div>
+                <div class="chat-input">
+                    <input type="text" id="messageInput" placeholder="Введите сообщение..." 
+                           onkeypress="if(event.key === 'Enter') sendMessage()">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Панель управления -->
+        <div class="controls">
+            <button id="micBtn" class="btn" onclick="toggleMic()">🎙️</button>
+            <button id="camBtn" class="btn" onclick="toggleCam()">📷</button>
+            <button id="screenBtn" class="btn" onclick="toggleScreen()">🖥️</button>
+            <button class="btn exit" onclick="disconnect()">🚪</button>
+        </div>
+    </div>
+
+    <script>
+        // Глобальные переменные
+        let ws = null;
+        let myId = null;
+        let myNick = null;
+        let currentRoom = null;
+        let localStream = null;
+        let screenStream = null;
+        let peerConnections = new Map();
+        
+        // WebSocket подключение
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}`;
+            
+            console.log('Подключаюсь к:', wsUrl);
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('✅ WebSocket подключен');
+                updateStatus(true);
+            };
+            
+            ws.onmessage = async (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('📨 Получено:', data.type);
+                    
+                    switch(data.type) {
+                        case 'hello':
+                            console.log('Сервер говорит:', data.message);
+                            break;
+                            
+                        case 'room_joined':
+                            myId = data.userId;
+                            console.log('Вошёл в комнату:', data.roomId);
+                            console.log('Участники:', data.users);
+                            
+                            // Добавляем существующих участников
+                            data.users.forEach(user => {
+                                if (user.userId !== myId) {
+                                    addVideoBox(user.userId, user.nick);
+                                }
+                            });
+                            break;
+                            
+                        case 'user_joined':
+                            console.log('Новый участник:', data.nick);
+                            addVideoBox(data.userId, data.nick);
+                            break;
+                            
+                        case 'user_left':
+                            console.log('Участник вышел:', data.userId);
+                            removeVideoBox(data.userId);
+                            break;
+                            
+                        case 'signal':
+                            await handleSignal(data);
+                            break;
+                            
+                        case 'chat_message':
+                            addMessage(data.fromNick, data.message);
+                            break;
+                            
+                        case 'pong':
+                            // Пинг-понг
+                            break;
+                    }
+                } catch (error) {
+                    console.error('❌ Ошибка обработки сообщения:', error);
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log('❌ WebSocket отключен');
+                updateStatus(false);
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('💥 WebSocket ошибка:', error);
+            };
+        }
+        
+        // Вход в систему
+        async function login() {
+            myNick = document.getElementById('username').value.trim();
+            currentRoom = document.getElementById('roomId').value.trim();
+            
+            if (!myNick) {
+                alert('Введите ник!');
+                return;
+            }
+            
+            if (!currentRoom) {
+                alert('Введите ID комнаты!');
+                return;
+            }
+            
+            // Скрываем экран входа
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+            
+            // Подключаем WebSocket
+            connectWebSocket();
+            
+            // Ждём подключения WebSocket
+            setTimeout(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'join',
+                        roomId: currentRoom,
+                        userId: 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+                        nick: myNick,
+                        avatar: ''
+                    }));
+                    
+                    // Добавляем своё видео
+                    addVideoBox('self', myNick);
+                }
+            }, 1000);
+        }
+        
+        // Добавление видео бокса
+        function addVideoBox(userId, nick) {
+            if (document.getElementById('video-' + userId)) return;
+            
+            const videosContainer = document.getElementById('videos');
+            const videoBox = document.createElement('div');
+            videoBox.className = 'video-box';
+            videoBox.id = 'video-' + userId;
+            
+            videoBox.innerHTML = `
+                <video id="stream-${userId}" autoplay playsinline ${userId === 'self' ? 'muted' : ''}></video>
+                <div class="video-info">${nick}</div>
+            `;
+            
+            videosContainer.appendChild(videoBox);
+            
+            // Добавляем в список участников
+            updateUserList(userId, nick, true);
+        }
+        
+        // Удаление видео бокса
+        function removeVideoBox(userId) {
+            const videoBox = document.getElementById('video-' + userId);
+            if (videoBox) {
+                videoBox.remove();
+            }
+            
+            updateUserList(userId, '', false);
+            
+            // Закрываем peer connection
+            if (peerConnections.has(userId)) {
+                peerConnections.get(userId).close();
+                peerConnections.delete(userId);
+            }
+        }
+        
+        // Обновление списка участников
+        function updateUserList(userId, nick, add) {
+            const userList = document.getElementById('userList');
+            
+            if (add) {
+                if (!document.getElementById('user-item-' + userId)) {
+                    const userItem = document.createElement('div');
+                    userItem.className = 'user-item';
+                    userItem.id = 'user-item-' + userId;
+                    userItem.textContent = '👤 ' + nick;
+                    userList.appendChild(userItem);
+                }
+            } else {
+                const userItem = document.getElementById('user-item-' + userId);
+                if (userItem) {
+                    userItem.remove();
+                }
+            }
+        }
+        
+        // Добавление сообщения в чат
+        function addMessage(from, text) {
+            const messages = document.getElementById('messages');
+            const message = document.createElement('div');
+            message.className = 'message';
+            message.innerHTML = `<strong>${from}:</strong> ${text}`;
+            messages.appendChild(message);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        // Отправка сообщения
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const text = input.value.trim();
+            
+            if (!text || !ws) return;
+            
+            ws.send(JSON.stringify({
+                type: 'message',
+                message: text
+            }));
+            
+            addMessage('Я', text);
+            input.value = '';
+        }
+        
+        // WebRTC сигналы
+        async function handleSignal(data) {
+            const { from, signal } = data;
+            
+            if (signal.type === 'offer') {
+                await createPeerConnection(from);
+                const pc = peerConnections.get(from);
+                await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                
+                ws.send(JSON.stringify({
+                    type: 'signal',
+                    to: from,
+                    signal: {
+                        type: 'answer',
+                        sdp: pc.localDescription
+                    }
+                }));
+            } else if (signal.type === 'answer') {
+                const pc = peerConnections.get(from);
+                if (pc) {
+                    await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+                }
+            } else if (signal.type === 'candidate') {
+                const pc = peerConnections.get(from);
+                if (pc) {
+                    await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                }
+            }
+        }
+        
+        // Создание peer connection
+        async function createPeerConnection(userId) {
+            if (peerConnections.has(userId)) return;
+            
+            const pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' },
+                    { urls: 'stun:stun4.l.google.com:19302' }
+                ]
+            });
+            
+            peerConnections.set(userId, pc);
+            
+            // Добавляем локальные треки
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    pc.addTrack(track, localStream);
+                });
+            }
+            
+            // Обработка ICE кандидатов
+            pc.onicecandidate = (event) => {
+                if (event.candidate && ws) {
+                    ws.send(JSON.stringify({
+                        type: 'signal',
+                        to: userId,
+                        signal: {
+                            type: 'candidate',
+                            candidate: event.candidate
+                        }
+                    }));
+                }
+            };
+            
+            // Получение удаленного потока
+            pc.ontrack = (event) => {
+                const stream = event.streams[0];
+                const video = document.getElementById('stream-' + userId);
+                if (video) {
+                    video.srcObject = stream;
+                }
+            };
+            
+            // Создаём offer если мы инициаторы
+            setTimeout(async () => {
+                try {
+                    const offer = await pc.createOffer();
+                    await pc.setLocalDescription(offer);
+                    
+                    ws.send(JSON.stringify({
+                        type: 'signal',
+                        to: userId,
+                        signal: {
+                            type: 'offer',
+                            sdp: pc.localDescription
+                        }
+                    }));
+                } catch (error) {
+                    console.error('Ошибка создания offer:', error);
+                }
+            }, 1000);
+        }
+        
+        // Управление медиа
+        async function toggleMic() {
+            const btn = document.getElementById('micBtn');
+            
+            if (!localStream) {
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    btn.classList.add('active');
+                    
+                    // Добавляем аудио трек ко всем соединениям
+                    peerConnections.forEach((pc, userId) => {
+                        const audioTrack = localStream.getAudioTracks()[0];
+                        if (audioTrack) {
+                            const sender = pc.getSenders().find(s => s.track?.kind === 'audio');
+                            if (sender) {
+                                sender.replaceTrack(audioTrack);
+                            } else {
+                                pc.addTrack(audioTrack, localStream);
+                            }
+                        }
+                    });
+                } catch (error) {
+                    console.error('Ошибка доступа к микрофону:', error);
+                }
+            } else {
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioTrack.enabled = !audioTrack.enabled;
+                    if (audioTrack.enabled) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                }
+            }
+        }
+        
+        async function toggleCam() {
+            const btn = document.getElementById('camBtn');
+            
+            if (!localStream) {
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    btn.classList.add('active');
+                    
+                    // Показываем своё видео
+                    const selfVideo = document.getElementById('stream-self');
+                    if (selfVideo) {
+                        selfVideo.srcObject = localStream;
+                    }
+                    
+                    // Добавляем видео трек ко всем соединениям
+                    peerConnections.forEach((pc, userId) => {
+                        const videoTrack = localStream.getVideoTracks()[0];
+                        if (videoTrack) {
+                            const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+                            if (sender) {
+                                sender.replaceTrack(videoTrack);
+                            } else {
+                                pc.addTrack(videoTrack, localStream);
+                            }
+                        }
+                    });
+                } catch (error) {
+                    console.error('Ошибка доступа к камере:', error);
+                }
+            } else {
+                const videoTrack = localStream.getVideoTracks()[0];
+                if (videoTrack) {
+                    videoTrack.enabled = !videoTrack.enabled;
+                    if (videoTrack.enabled) {
+                        btn.classList.add('active');
+                        const selfVideo = document.getElementById('stream-self');
+                        if (selfVideo) {
+                            selfVideo.srcObject = localStream;
+                        }
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                }
+            }
+        }
+        
+        async function toggleScreen() {
+            const btn = document.getElementById('screenBtn');
+            
+            if (!screenStream) {
+                try {
+                    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                    btn.classList.add('active');
+                    
+                    // Показываем экран вместо камеры
+                    const selfVideo = document.getElementById('stream-self');
+                    if (selfVideo) {
+                        selfVideo.srcObject = screenStream;
+                    }
+                    
+                    // Заменяем видео трек у всех соединений
+                    peerConnections.forEach((pc, userId) => {
+                        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+                        if (sender && screenStream.getVideoTracks()[0]) {
+                            sender.replaceTrack(screenStream.getVideoTracks()[0]);
+                        }
+                    });
+                    
+                    // Обработка завершения демонстрации
+                    screenStream.getVideoTracks()[0].onended = () => {
+                        screenStream = null;
+                        btn.classList.remove('active');
+                        
+                        // Возвращаем камеру если была
+                        if (localStream) {
+                            const selfVideo = document.getElementById('stream-self');
+                            if (selfVideo) {
+                                selfVideo.srcObject = localStream;
+                            }
+                            
+                            // Возвращаем камеру для всех
+                            peerConnections.forEach((pc, userId) => {
+                                const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+                                if (sender && localStream.getVideoTracks()[0]) {
+                                    sender.replaceTrack(localStream.getVideoTracks()[0]);
+                                }
+                            });
+                        }
+                    };
+                } catch (error) {
+                    console.error('Ошибка демонстрации экрана:', error);
+                }
+            }
+        }
+        
+        // Отключение
+        function disconnect() {
+            if (ws) {
+                ws.send(JSON.stringify({ type: 'leave' }));
+                ws.close();
+            }
+            
+            peerConnections.forEach(pc => pc.close());
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
+            if (screenStream) screenStream.getTracks().forEach(track => track.stop());
+            
+            location.reload();
+        }
+        
+        // Обновление статуса
+        function updateStatus(online) {
+            const status = document.getElementById('status');
+            status.textContent = online ? 'ONLINE' : 'OFFLINE';
+            status.className = `status ${online ? 'online' : 'offline'}`;
+        }
+        
+        // Авто-фокус на поле ввода
+        document.getElementById('username').focus();
+    </script>
+</body>
+</html>
