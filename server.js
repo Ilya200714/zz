@@ -1,159 +1,89 @@
 const WebSocket = require('ws');
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ЖЕСТКО отключаем ВСЕ заголовки безопасности Railway
-app.disable('x-powered-by');
-
-// Middleware для удаления ВСЕХ security headers
+// Убираем все ограничения CSP
 app.use((req, res, next) => {
-    // Удаляем все стандартные заголовки безопасности
-    res.removeHeader('X-Content-Type-Options');
-    res.removeHeader('X-Frame-Options');
-    res.removeHeader('X-XSS-Protection');
-    res.removeHeader('Content-Security-Policy');
-    res.removeHeader('Cross-Origin-Embedder-Policy');
-    res.removeHeader('Cross-Origin-Opener-Policy');
-    res.removeHeader('Cross-Origin-Resource-Policy');
-    
-    // Разрешаем ВСЕ
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Max-Age', '86400');
-    
-    // Позволяем всё
     res.setHeader('Content-Security-Policy', 
-        "default-src * blob: data: 'unsafe-inline' 'unsafe-eval' 'unsafe-hashes'; " +
-        "script-src * blob: data: 'unsafe-inline' 'unsafe-eval' 'unsafe-hashes'; " +
-        "style-src * blob: data: 'unsafe-inline' 'unsafe-eval'; " +
-        "img-src * blob: data: 'unsafe-inline' 'unsafe-eval'; " +
-        "media-src * blob: data:; " +
-        "font-src * blob: data:; " +
-        "connect-src * blob: data: ws: wss:; " +
-        "frame-src * blob: data:; " +
-        "object-src * blob: data:; " +
-        "worker-src * blob: data:;"
+        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+        "img-src * data: blob:; " +
+        "media-src * data: blob:; " +
+        "script-src * 'unsafe-inline' 'unsafe-eval'; " +
+        "style-src * 'unsafe-inline'; " +
+        "font-src * data:; " +
+        "connect-src * ws: wss:;"
     );
-    
+    res.setHeader('Access-Control-Allow-Origin', '*');
     next();
 });
 
-// Раздаем статические файлы с правильными заголовками
-app.use(express.static(path.join(__dirname, 'public'), {
-    setHeaders: (res, path) => {
-        res.setHeader('Content-Type', getContentType(path));
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    }
-}));
-
-function getContentType(filePath) {
-    const ext = path.extname(filePath).toLowerCase();
-    const types = {
-        '.html': 'text/html; charset=utf-8',
-        '.css': 'text/css; charset=utf-8',
-        '.js': 'application/javascript; charset=utf-8',
-        '.json': 'application/json',
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.gif': 'image/gif',
-        '.svg': 'image/svg+xml'
-    };
-    return types[ext] || 'application/octet-stream';
-}
+// Раздаем статические файлы
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Главная страница
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// API endpoint для проверки
-app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'ok', 
-        time: new Date().toISOString(),
-        rooms: Object.keys(rooms || {}).length 
-    });
-});
-
 // Запускаем HTTP сервер
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log('🔥 Server запущен на порту', PORT);
-    console.log('📡 WebSocket сервер готов');
-    console.log('🌐 Откройте: http://localhost:' + PORT);
+    console.log(`🚀 TITAN CHAT запущен на порту ${PORT}`);
 });
 
 // WebSocket сервер
-const wss = new WebSocket.Server({ 
-    server,
-    // Разрешаем все подключения
-    verifyClient: (info, callback) => {
-        callback(true); // Всегда разрешаем
-    }
-});
+const wss = new WebSocket.Server({ server });
 
-const rooms = new Map();
-const clients = new Map();
+const rooms = new Map(); // roomId -> { userId -> {ws, nick, avatar} }
+const clients = new Map(); // ws -> {roomId, userId, nick, avatar}
 
 wss.on('connection', (ws, req) => {
-    const ip = req.socket.remoteAddress;
-    console.log('🟢 Новое подключение от', ip);
+    console.log('🔗 Новое подключение');
     
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
+            console.log('📨 Получено:', data.type);
             
             switch(data.type) {
                 case 'join':
                     handleJoin(ws, data);
                     break;
-                case 'signal':
-                    handleSignal(ws, data);
+                case 'webrtc-offer':
+                case 'webrtc-answer':
+                case 'webrtc-candidate':
+                    handleWebRTC(ws, data);
                     break;
-                case 'message':
-                    handleMessage(ws, data);
+                case 'chat-message':
+                    handleChat(ws, data);
+                    break;
+                case 'user-action':
+                    handleUserAction(ws, data);
                     break;
                 case 'ping':
                     ws.send(JSON.stringify({ type: 'pong' }));
                     break;
-                case 'leave':
-                    handleLeave(ws);
-                    break;
             }
         } catch (error) {
-            console.error('❌ Ошибка обработки сообщения:', error);
+            console.error('❌ Ошибка:', error.message);
         }
     });
     
     ws.on('close', () => {
-        handleLeave(ws);
-        console.log('🔴 Отключился', ip);
+        handleDisconnect(ws);
+        console.log('🔌 Отключился');
     });
     
     ws.on('error', (error) => {
         console.error('💥 WebSocket ошибка:', error);
     });
-    
-    // Отправляем приветствие
-    ws.send(JSON.stringify({
-        type: 'hello',
-        message: 'Подключено к TITAN CHAT',
-        timestamp: Date.now()
-    }));
 });
 
 function handleJoin(ws, data) {
     const { roomId, userId, nick, avatar } = data;
     
-    if (!roomId || !userId) return;
-    
-    // Создаем комнату если нет
     if (!rooms.has(roomId)) {
         rooms.set(roomId, new Map());
     }
@@ -164,79 +94,98 @@ function handleJoin(ws, data) {
     clients.set(ws, { roomId, userId, nick, avatar });
     room.set(userId, { ws, nick, avatar });
     
-    // Отправляем список участников новому
-    const users = Array.from(room.values()).map(user => ({
-        userId: user.ws === ws ? userId : user.userId,
+    // Отправляем текущих пользователей новичку
+    const usersInRoom = Array.from(room.entries()).map(([id, user]) => ({
+        userId: id,
         nick: user.nick,
         avatar: user.avatar
     }));
     
     ws.send(JSON.stringify({
-        type: 'room_joined',
+        type: 'room-joined',
         roomId,
-        userId,
-        users,
-        timestamp: Date.now()
+        yourId: userId,
+        users: usersInRoom
     }));
     
-    // Уведомляем других в комнате
+    // Уведомляем других о новом пользователе
     room.forEach((user, id) => {
         if (id !== userId && user.ws.readyState === 1) {
             user.ws.send(JSON.stringify({
-                type: 'user_joined',
+                type: 'user-joined',
                 userId,
                 nick,
-                avatar,
-                timestamp: Date.now()
+                avatar
             }));
         }
     });
     
-    console.log(`👤 ${nick} вошел в комнату ${roomId}`);
+    console.log(`👤 ${nick} вошёл в комнату ${roomId}`);
 }
 
-function handleSignal(ws, data) {
+function handleWebRTC(ws, data) {
     const client = clients.get(ws);
     if (!client) return;
     
-    const { to, signal } = data;
+    const { to, ...signalData } = data;
     const room = rooms.get(client.roomId);
     if (!room) return;
     
     const targetUser = room.get(to);
     if (targetUser && targetUser.ws.readyState === 1) {
         targetUser.ws.send(JSON.stringify({
-            type: 'signal',
-            from: client.userId,
-            signal,
-            timestamp: Date.now()
+            ...signalData,
+            from: client.userId
         }));
     }
 }
 
-function handleMessage(ws, data) {
+function handleChat(ws, data) {
     const client = clients.get(ws);
     if (!client) return;
     
-    const { message } = data;
+    const { message, type = 'text' } = data;
     const room = rooms.get(client.roomId);
     if (!room) return;
     
-    // Рассылаем сообщение всем в комнате
+    // Рассылаем всем в комнате
     room.forEach((user) => {
         if (user.ws.readyState === 1) {
             user.ws.send(JSON.stringify({
-                type: 'chat_message',
+                type: 'chat-message',
                 from: client.userId,
                 fromNick: client.nick,
                 message,
+                messageType: type,
                 timestamp: Date.now()
             }));
         }
     });
 }
 
-function handleLeave(ws) {
+function handleUserAction(ws, data) {
+    const client = clients.get(ws);
+    if (!client) return;
+    
+    const { action, value } = data;
+    const room = rooms.get(client.roomId);
+    if (!room) return;
+    
+    // Рассылаем действие всем кроме отправителя
+    room.forEach((user, userId) => {
+        if (userId !== client.userId && user.ws.readyState === 1) {
+            user.ws.send(JSON.stringify({
+                type: 'user-action',
+                from: client.userId,
+                action,
+                value,
+                timestamp: Date.now()
+            }));
+        }
+    });
+}
+
+function handleDisconnect(ws) {
     const client = clients.get(ws);
     if (!client) return;
     
@@ -246,7 +195,6 @@ function handleLeave(ws) {
     if (room) {
         room.delete(userId);
         
-        // Удаляем комнату если пустая
         if (room.size === 0) {
             rooms.delete(roomId);
         } else {
@@ -254,9 +202,8 @@ function handleLeave(ws) {
             room.forEach((user) => {
                 if (user.ws.readyState === 1) {
                     user.ws.send(JSON.stringify({
-                        type: 'user_left',
-                        userId,
-                        timestamp: Date.now()
+                        type: 'user-left',
+                        userId
                     }));
                 }
             });
@@ -264,36 +211,20 @@ function handleLeave(ws) {
     }
     
     clients.delete(ws);
-    console.log(`👋 ${userId} вышел из комнаты`);
+    console.log(`👋 ${userId} вышел`);
 }
 
-// Периодическая очистка мертвых подключений
+// Очистка мертвых подключений
 setInterval(() => {
-    let cleaned = 0;
     rooms.forEach((room, roomId) => {
         room.forEach((user, userId) => {
             if (user.ws.readyState === 3) { // CLOSED
                 room.delete(userId);
                 clients.delete(user.ws);
-                cleaned++;
             }
         });
         if (room.size === 0) {
             rooms.delete(roomId);
         }
     });
-    if (cleaned > 0) {
-        console.log(`🧹 Очищено ${cleaned} мертвых подключений`);
-    }
 }, 30000);
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('🛑 Получен SIGTERM, завершаем работу...');
-    wss.close(() => {
-        server.close(() => {
-            console.log('✅ Сервер выключен');
-            process.exit(0);
-        });
-    });
-});
