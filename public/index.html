@@ -21,7 +21,8 @@
         video.active { display: block; }
         .u-ava { width: 80px; height: 80px; border-radius: 50%; background: #111 center/cover; border: 3px solid var(--accent); position: absolute; z-index: 5; top: 50%; left: 50%; transform: translate(-50%, -50%); transition: 0.3s; }
         .u-ava.hidden { opacity: 0; visibility: hidden; }
-        .pulse-ring { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85px; height: 85px; border-radius: 50%; border: 4px solid var(--accent); opacity: 0; z-index: 4; pointer-events: none; transition: 0.1s; }
+        .pulse-ring { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85px; height: 85px; border-radius: 50%; border: 4px solid #39ff14; opacity: 0; z-index: 4; pointer-events: none; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
         .u-nick { position: absolute; bottom: 8px; left: 8px; font-size: 10px; background: rgba(0,0,0,0.8); padding: 3px 8px; border-radius: 4px; z-index: 10; border: 1px solid var(--accent); }
         .vol-ctrl { position: absolute; top: 8px; left: 8px; z-index: 20; display: flex; align-items: center; background: rgba(0,0,0,0.6); padding: 2px 5px; border-radius: 10px; }
         .vol-slider { width: 60px; height: 4px; cursor: pointer; accent-color: var(--accent); }
@@ -62,14 +63,15 @@
             position: fixed;
             top: 50px;
             right: 10px;
-            background: rgba(0,0,0,0.8);
-            padding: 10px;
-            border-radius: 5px;
+            background: rgba(0,0,0,0.9);
+            padding: 10px 15px;
+            border-radius: 8px;
             border-left: 4px solid var(--accent);
             font-size: 12px;
             z-index: 9999;
             animation: slideIn 0.3s ease;
             max-width: 300px;
+            box-shadow: 0 0 20px rgba(0,242,255,0.3);
         }
         @keyframes slideIn {
             from { transform: translateX(100%); opacity: 0; }
@@ -95,13 +97,9 @@
     <div id="w-lobby" class="win" style="display:none">
         <div class="card">
             <h2 id="l-nick" style="color:var(--green)"></h2>
-            <input type="text" id="i-room" placeholder="ID КОМНАТЫ" value="titan-room" style="width:100%; padding:10px; background:#000; color:#fff; border:1px solid #333;">
+            <input type="text" id="i-room" placeholder="ID КОМНАТЫ" value="titan" style="width:100%; padding:10px; background:#000; color:#fff; border:1px solid #333;">
             <p style="font-size: 9px; color: #888;">Оба введите один ID и заходите!</p>
-            <button onclick="start()" style="width:100%; padding:15px; background:var(--green); border:none; border-radius:10px; font-weight:bold; cursor:pointer">ПОДКЛЮЧИТЬСЯ К УЗЛУ</button>
-            <div id="connection-info" style="margin-top: 15px; font-size: 10px; color: #888; display: none;">
-                <div>Ждем подключения друга...</div>
-                <div>ID комнаты: <span id="current-room"></span></div>
-            </div>
+            <button onclick="start()" style="width:100%; padding:15px; background:var(--green); border:none; border-radius:10px; font-weight:bold; cursor:pointer">ПОДКЛЮЧИТЬСЯ</button>
         </div>
     </div>
     
@@ -140,19 +138,20 @@
         let currentRoom = '';
         let localStream = null;
         let screenStream = null;
-        let peerConnections = new Map(); // userId -> RTCPeerConnection
-        let profile = JSON.parse(localStorage.getItem('titan_p')) || {nick:'', ava:'', id: Math.random().toString(36).substr(2,8)};
-        let activeUsers = new Map();
-        let audioAnalysers = new Map(); // Для анимации звука
-        
-        const sfx = { 
-            horn: new Audio('https://www.myinstants.com/media/sounds/mlg-airhorn.mp3'), 
-            msg: new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3') 
+        let peerConnections = new Map();
+        let profile = JSON.parse(localStorage.getItem('titan_p')) || {
+            nick: '', 
+            ava: '', 
+            id: 'user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6)
         };
+        let activeUsers = new Map();
         
-        // Загружаем SFX
-        sfx.horn.load();
-        sfx.msg.load();
+        // Звуки
+        const sfx = { 
+            horn: new Audio('https://assets.mixkit.co/active_storage/sfx/2260/2260-preview.mp3'),
+            msg: new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3'),
+            join: new Audio('https://assets.mixkit.co/active_storage/sfx/2575/2575-preview.mp3')
+        };
         
         // Инициализация
         if(profile.nick) showLobby();
@@ -181,26 +180,20 @@
             document.getElementById('l-nick').innerText = "БОЕЦ: " + profile.nick; 
         }
         
-        // Основные функции
         function start() {
             currentRoom = document.getElementById('i-room').value.trim(); 
             if(!currentRoom) return alert('Введите ID комнаты!');
             
-            document.getElementById('current-room').textContent = currentRoom;
-            document.getElementById('connection-info').style.display = 'block';
-            
-            myId = "titan-" + Date.now() + "-" + Math.random().toString(36).substr(2, 6);
+            myId = profile.id;
             myNick = profile.nick;
             
             connectWebSocket();
         }
         
+        // WebSocket
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const host = window.location.host;
-            const wsUrl = `${protocol}//${host}`;
-            
-            console.log('Подключаюсь к WebSocket:', wsUrl);
+            const wsUrl = `${protocol}//${window.location.host}`;
             
             ws = new WebSocket(wsUrl);
             
@@ -231,29 +224,19 @@
             ws.onmessage = async (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    console.log('📨 Получено от сервера:', data.type);
                     
                     switch(data.type) {
-                        case 'connected':
-                            console.log('Соединение подтверждено сервером');
-                            break;
-                            
-                        case 'room-joined':
-                            console.log('Вошли в комнату, пользователи:', data.users.length);
-                            showNotification(`Вошли в комнату ${currentRoom}`);
-                            
+                        case 'joined':
                             // Добавляем существующих пользователей
                             data.users.forEach(user => {
-                                if (user.userId !== myId) {
-                                    addBox(user.nick, user.avatar, user.userId);
-                                    updateUserList(user.userId, user.nick, true);
-                                    createPeerConnection(user.userId);
-                                }
+                                addBox(user.nick, user.avatar, user.userId);
+                                updateUserList(user.userId, user.nick, true);
+                                createPeerConnection(user.userId);
                             });
                             break;
                             
                         case 'user-joined':
-                            console.log('Новый пользователь:', data.nick);
+                            sfx.join.play().catch(() => {});
                             showNotification(`${data.nick} присоединился`);
                             
                             addBox(data.nick, data.avatar, data.userId);
@@ -262,94 +245,73 @@
                             break;
                             
                         case 'user-left':
-                            console.log('Пользователь вышел:', data.userId);
-                            showNotification(`${data.nick || 'Кто-то'} вышел`);
-                            
+                            showNotification(`${activeUsers.get(data.userId) || 'Кто-то'} вышел`);
                             removeUser(data.userId);
                             break;
                             
-                        case 'webrtc-signal':
-                            console.log('WebRTC сигнал от', data.from, 'тип:', data.signal.type);
+                        case 'signal':
                             await handleWebRTCSignal(data.from, data.signal);
                             break;
                             
                         case 'chat':
-                            console.log('Сообщение от', data.fromNick, ':', data.message.substring(0, 30));
                             pushChat(data.fromNick, data.message);
-                            if (!data.isSelf) sfx.msg.play().catch(e => console.log('Ошибка воспроизведения звука'));
+                            if (data.fromNick !== myNick) {
+                                sfx.msg.play().catch(() => {});
+                            }
                             break;
                             
-                        case 'user-action':
-                            handleUserAction(data);
-                            break;
-                            
-                        case 'error':
-                            console.error('Ошибка от сервера:', data.message);
-                            showNotification(`Ошибка: ${data.message}`, true);
+                        case 'action':
+                            if (data.action === 'sfx' && data.value === 'horn') {
+                                sfx.horn.play().catch(() => {});
+                                showNotification(`${data.fromNick} отправил сигнал!`);
+                            }
                             break;
                     }
                 } catch (error) {
-                    console.error('❌ Ошибка обработки сообщения:', error);
+                    console.error('Ошибка:', error);
                 }
             };
             
-            ws.onclose = (event) => {
-                console.log('❌ WebSocket отключен, код:', event.code, 'причина:', event.reason);
+            ws.onclose = () => {
+                console.log('❌ WebSocket отключен');
                 updateStatus(false);
-                showNotification('Отключено от сервера', true);
-                
-                // Пытаемся переподключиться через 3 секунды
-                setTimeout(() => {
-                    if (!ws || ws.readyState === WebSocket.CLOSED) {
-                        console.log('Пытаюсь переподключиться...');
-                        connectWebSocket();
-                    }
-                }, 3000);
+                setTimeout(connectWebSocket, 3000);
             };
             
             ws.onerror = (error) => {
-                console.error('💥 WebSocket ошибка:', error);
-                showNotification('Ошибка подключения', true);
+                console.error('WebSocket ошибка:', error);
             };
         }
         
-        // WebRTC функции
+        // WebRTC - ИСПРАВЛЕННЫЙ КОД!
         async function createPeerConnection(userId) {
-            if (peerConnections.has(userId)) {
-                console.log('Peer connection уже существует для', userId);
-                return;
-            }
+            if (peerConnections.has(userId)) return;
             
-            console.log('Создаю Peer Connection для', userId);
+            console.log('Создаю PeerConnection для', userId);
             
-            const configuration = {
+            const pc = new RTCPeerConnection({
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' },
-                    { urls: 'stun:stun3.l.google.com:19302' },
-                    { urls: 'stun:stun4.l.google.com:19302' }
-                ],
-                iceCandidatePoolSize: 10
-            };
+                    { urls: 'stun:stun2.l.google.com:19302' }
+                ]
+            });
             
-            const pc = new RTCPeerConnection(configuration);
             peerConnections.set(userId, pc);
             
-            // Добавляем локальные треки если они есть
+            // Добавляем локальные треки
             if (localStream) {
                 localStream.getTracks().forEach(track => {
-                    console.log('Добавляю локальный трек', track.kind, 'к', userId);
+                    console.log('Добавляю трек', track.kind, 'к', userId);
                     pc.addTrack(track, localStream);
                 });
             }
             
-            // Обработка ICE кандидатов
+            // ICE кандидаты
             pc.onicecandidate = (event) => {
-                if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
-                    console.log('Отправляю ICE кандидат к', userId);
+                if (event.candidate && ws) {
                     ws.send(JSON.stringify({
-                        type: 'webrtc-signal',
+                        type: 'signal',
                         to: userId,
                         signal: {
                             type: 'candidate',
@@ -359,26 +321,16 @@
                 }
             };
             
-            // Получение удаленного потока
+            // Получение удаленного потока - ИСПРАВЛЕНО!
             pc.ontrack = (event) => {
-                console.log('Получен удаленный поток от', userId, 'треков:', event.streams[0].getTracks().length);
+                console.log('Получен поток от', userId, 'треков:', event.streams[0].getTracks().length);
                 const stream = event.streams[0];
-                pipe(userId, stream);
                 
-                // Начинаем анализ звука для анимации
+                // Отображаем видео/аудио
+                showRemoteStream(userId, stream);
+                
+                // Настраиваем анализ аудио для анимации
                 setupAudioAnalysis(userId, stream);
-            };
-            
-            pc.oniceconnectionstatechange = () => {
-                console.log(`ICE состояние для ${userId}:`, pc.iceConnectionState);
-                if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-                    console.log(`Соединение с ${userId} потеряно`);
-                    showNotification(`Соединение с ${activeUsers.get(userId) || 'пользователем'} потеряно`, true);
-                }
-            };
-            
-            pc.onsignalingstatechange = () => {
-                console.log(`Signaling состояние для ${userId}:`, pc.signalingState);
             };
             
             // Создаем offer
@@ -389,11 +341,9 @@
                 });
                 await pc.setLocalDescription(offer);
                 
-                console.log('Отправляю WebRTC offer к', userId);
-                
-                if (ws && ws.readyState === WebSocket.OPEN) {
+                if (ws) {
                     ws.send(JSON.stringify({
-                        type: 'webrtc-signal',
+                        type: 'signal',
                         to: userId,
                         signal: {
                             type: 'offer',
@@ -402,15 +352,12 @@
                     }));
                 }
             } catch (error) {
-                console.error('Ошибка создания offer для', userId, ':', error);
+                console.error('Ошибка создания offer:', error);
             }
         }
         
         async function handleWebRTCSignal(from, signal) {
-            console.log('Обработка WebRTC сигнала от', from, 'тип:', signal.type);
-            
             if (!peerConnections.has(from)) {
-                console.log('Создаю новый Peer Connection для', from);
                 await createPeerConnection(from);
             }
             
@@ -418,17 +365,14 @@
             
             try {
                 if (signal.type === 'offer') {
-                    console.log('Устанавливаю remote description (offer) от', from);
                     await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
                     
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
                     
-                    console.log('Отправляю answer к', from);
-                    
-                    if (ws && ws.readyState === WebSocket.OPEN) {
+                    if (ws) {
                         ws.send(JSON.stringify({
-                            type: 'webrtc-signal',
+                            type: 'signal',
                             to: from,
                             signal: {
                                 type: 'answer',
@@ -437,74 +381,45 @@
                         }));
                     }
                 } else if (signal.type === 'answer') {
-                    console.log('Устанавливаю remote description (answer) от', from);
                     await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
                 } else if (signal.type === 'candidate') {
-                    console.log('Добавляю ICE кандидат от', from);
                     await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
                 }
             } catch (error) {
-                console.error('Ошибка обработки WebRTC сигнала от', from, ':', error);
+                console.error('Ошибка обработки сигнала:', error);
             }
         }
         
-        // Интерфейсные функции
-        function addBox(nick, ava, id, isMe = false, isScr = false) {
-            const bId = isScr ? 'scr-' + id : 'u-' + id;
-            if (document.getElementById(bId)) return;
+        // Отображение потоков
+        function showRemoteStream(userId, stream) {
+            const isScreen = stream.getVideoTracks()[0]?.label.includes('screen') || false;
+            const boxId = isScreen ? 'scr-' + userId : 'u-' + userId;
+            const videoId = 'vid-' + boxId;
             
-            console.log('Добавляю бокс для', nick, 'ID:', id);
-            
-            const b = document.createElement('div');
-            b.className = isScr ? 'u-box screen' : 'u-box';
-            b.id = bId;
-            b.innerHTML = `
-                ${!isScr ? `<div class="u-ava" id="ava-${id}" style="background-image:url(${ava})"></div>` : ''}
-                <div class="pulse-ring" id="p-${id}"></div>
-                <div class="u-nick">${isScr ? '🖥️ ' + nick : nick}</div>
-                ${!isMe ? `<div class="vol-ctrl">🔈<input type="range" class="vol-slider" min="0" max="1" step="0.1" value="1" oninput="setVol('${bId}', this.value)"></div>` : ''}
-                ${isScr ? `<button class="fs-btn" onclick="toggleFS('${bId}')">FS</button>` : ''}
-                <video id="vid-${bId}" autoplay playsinline ${isMe ? 'muted' : ''}></video>
-            `;
-            document.getElementById('stage').appendChild(b);
-        }
-        
-        function pipe(id, stream) {
-            const isScr = stream.getVideoTracks()[0]?.label.toLowerCase().includes('screen');
-            const bId = isScr ? 'scr-' + id : 'u-' + id;
-            const video = document.getElementById('vid-' + bId);
-            
+            // Создаем или находим видео элемент
+            let video = document.getElementById(videoId);
             if (!video) {
-                console.log('Видео элемент не найден, создаю новый для', id);
-                const nick = activeUsers.get(id) || 'Друг';
-                addBox(nick, '', id, false, isScr);
+                const nick = activeUsers.get(userId) || 'Друг';
+                addBox(nick, '', userId, false, isScreen);
+                video = document.getElementById(videoId);
             }
             
-            const updatedVideo = document.getElementById('vid-' + bId);
-            if (updatedVideo) {
-                console.log('Устанавливаю поток для', id, 'видео треков:', stream.getVideoTracks().length, 'аудио треков:', stream.getAudioTracks().length);
-                updatedVideo.srcObject = stream;
-                updatedVideo.onloadedmetadata = () => {
-                    console.log('Метаданные загружены для', id);
-                    updatedVideo.play().catch(e => console.log('Ошибка воспроизведения:', e));
-                    updatedVideo.classList.add('active');
-                    if (!isScr) {
-                        const ava = document.getElementById('ava-' + id);
+            if (video) {
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.classList.add('active');
+                    if (!isScreen) {
+                        const ava = document.getElementById('ava-' + userId);
                         if (ava) ava.classList.add('hidden');
                     }
-                };
-                
-                updatedVideo.onplay = () => {
-                    console.log('Видео играет для', id);
+                    video.play().catch(e => console.log('Ошибка воспроизведения:', e));
                 };
             }
         }
         
+        // Анализ аудио для анимации
         function setupAudioAnalysis(userId, stream) {
-            if (stream.getAudioTracks().length === 0) {
-                console.log('Нет аудио треков для анализа у', userId);
-                return;
-            }
+            if (stream.getAudioTracks().length === 0) return;
             
             try {
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -513,50 +428,41 @@
                 source.connect(analyser);
                 
                 analyser.fftSize = 256;
-                const bufferLength = analyser.frequencyBinCount;
-                const dataArray = new Uint8Array(bufferLength);
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
                 
-                audioAnalysers.set(userId, { analyser, dataArray });
+                function analyzeAudio() {
+                    analyser.getByteFrequencyData(dataArray);
+                    
+                    // Средняя громкость
+                    let sum = 0;
+                    for (let i = 0; i < dataArray.length; i++) {
+                        sum += dataArray[i];
+                    }
+                    const average = sum / dataArray.length;
+                    
+                    // Показываем анимацию если есть звук
+                    const ring = document.getElementById('p-' + userId);
+                    if (ring) {
+                        if (average > 5) { // Порог звука
+                            ring.style.opacity = '1';
+                            ring.style.borderColor = '#39ff14';
+                        } else {
+                            ring.style.opacity = '0';
+                        }
+                    }
+                    
+                    requestAnimationFrame(analyzeAudio);
+                }
                 
-                console.log('Анализатор звука настроен для', userId);
+                analyzeAudio();
             } catch (error) {
-                console.error('Ошибка настройки анализатора звука для', userId, ':', error);
+                console.error('Ошибка анализа аудио:', error);
             }
         }
-        
-        function updateAudioVisualizers() {
-            audioAnalysers.forEach(({ analyser, dataArray }, userId) => {
-                analyser.getByteFrequencyData(dataArray);
-                
-                // Вычисляем среднюю громкость
-                let sum = 0;
-                for (let i = 0; i < dataArray.length; i++) {
-                    sum += dataArray[i];
-                }
-                const average = sum / dataArray.length;
-                
-                // Обновляем анимацию
-                const ring = document.getElementById('p-' + userId);
-                if (ring) {
-                    const opacity = Math.min(average / 50, 1); // Нормализуем к 0-1
-                    const scale = 1 + (average / 100); // Масштаб от громкости
-                    
-                    ring.style.opacity = opacity.toString();
-                    ring.style.transform = `translate(-50%, -50%) scale(${scale})`;
-                }
-            });
-            
-            requestAnimationFrame(updateAudioVisualizers);
-        }
-        
-        // Запускаем визуализацию звука
-        setTimeout(updateAudioVisualizers, 1000);
         
         // Управление медиа
         async function toggleMedia(type) {
             const btn = document.getElementById('b-' + (type === 'video' ? 'cam' : 'mic'));
-            
-            console.log('Переключаю медиа:', type);
             
             if (!localStream) {
                 try {
@@ -573,19 +479,16 @@
                         myVideo.srcObject = localStream;
                         myVideo.onloadedmetadata = () => {
                             myVideo.classList.add('active');
-                            document.getElementById('ava-' + myId)?.classList.add('hidden');
+                            const myAva = document.getElementById('ava-' + myId);
+                            if (myAva) myAva.classList.add('hidden');
+                            myVideo.play().catch(e => console.log('Ошибка воспроизведения:', e));
                         };
                     }
                     
-                    // Добавляем треки ко всем существующим соединениям
+                    // Добавляем треки ко всем соединениям
                     peerConnections.forEach((pc, userId) => {
                         localStream.getTracks().forEach(track => {
-                            const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
-                            if (sender) {
-                                sender.replaceTrack(track);
-                            } else {
-                                pc.addTrack(track, localStream);
-                            }
+                            pc.addTrack(track, localStream);
                         });
                     });
                     
@@ -595,7 +498,6 @@
                     alert(`Не удалось получить доступ к ${type === 'video' ? 'камере' : 'микрофону'}`);
                 }
             } else {
-                // Переключаем существующие треки
                 const tracks = localStream.getTracks().filter(track => track.kind === type);
                 if (tracks.length > 0) {
                     const enabled = !tracks[0].enabled;
@@ -604,110 +506,107 @@
                     if (enabled) {
                         btn.classList.add('on');
                         showNotification(`${type === 'video' ? 'Камера' : 'Микрофон'} включен`);
+                        
+                        // Если включили камеру, показываем видео
+                        if (type === 'video') {
+                            const myVideo = document.getElementById('vid-u-' + myId);
+                            if (myVideo) {
+                                myVideo.classList.add('active');
+                                document.getElementById('ava-' + myId)?.classList.add('hidden');
+                            }
+                        }
                     } else {
                         btn.classList.remove('on');
                         showNotification(`${type === 'video' ? 'Камера' : 'Микрофон'} выключен`);
-                    }
-                    
-                    // Если выключили камеру, показываем аватар
-                    if (type === 'video' && !enabled) {
-                        const myVideo = document.getElementById('vid-u-' + myId);
-                        if (myVideo) {
-                            myVideo.classList.remove('active');
-                            document.getElementById('ava-' + myId)?.classList.remove('hidden');
+                        
+                        // Если выключили камеру, показываем аватар
+                        if (type === 'video') {
+                            const myVideo = document.getElementById('vid-u-' + myId);
+                            if (myVideo) {
+                                myVideo.classList.remove('active');
+                                document.getElementById('ava-' + myId)?.classList.remove('hidden');
+                            }
                         }
                     }
                 }
             }
         }
         
+        // Демонстрация экрана - ИСПРАВЛЕНО!
         async function shareScreen() {
             const btn = document.getElementById('b-scr');
             
             if (!screenStream) {
                 try {
                     screenStream = await navigator.mediaDevices.getDisplayMedia({
-                        video: { cursor: "always" },
+                        video: true,
                         audio: false
                     });
                     
-                    console.log('Демонстрация экрана начата');
                     btn.classList.add('on');
                     
-                    // Добавляем бокс для экрана
+                    // Показываем экран
                     addBox(myNick + ' (экран)', '', myId, true, true);
                     const screenVideo = document.getElementById('vid-scr-' + myId);
                     if (screenVideo) {
                         screenVideo.srcObject = screenStream;
                         screenVideo.onloadedmetadata = () => {
                             screenVideo.classList.add('active');
+                            screenVideo.play().catch(e => console.log('Ошибка воспроизведения:', e));
                         };
                     }
                     
                     // Заменяем видео трек у всех соединений
                     const screenTrack = screenStream.getVideoTracks()[0];
                     peerConnections.forEach((pc, userId) => {
-                        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-                        if (sender && screenTrack) {
-                            sender.replaceTrack(screenTrack);
+                        const senders = pc.getSenders();
+                        const videoSender = senders.find(s => s.track?.kind === 'video');
+                        if (videoSender && screenTrack) {
+                            videoSender.replaceTrack(screenTrack);
                         }
                     });
                     
+                    // Когда демонстрация завершится
                     screenTrack.onended = () => {
-                        console.log('Демонстрация экрана завершена');
                         screenStream.getTracks().forEach(track => track.stop());
                         screenStream = null;
                         btn.classList.remove('on');
                         document.getElementById('scr-' + myId)?.remove();
                         
-                        // Возвращаем камеру если была
-                        if (localStream) {
+                        // Возвращаем камеру
+                        if (localStream && localStream.getVideoTracks()[0]) {
                             const cameraTrack = localStream.getVideoTracks()[0];
-                            if (cameraTrack) {
-                                peerConnections.forEach((pc, userId) => {
-                                    const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-                                    if (sender && cameraTrack) {
-                                        sender.replaceTrack(cameraTrack);
-                                    }
-                                });
-                            }
+                            peerConnections.forEach((pc, userId) => {
+                                const senders = pc.getSenders();
+                                const videoSender = senders.find(s => s.track?.kind === 'video');
+                                if (videoSender && cameraTrack) {
+                                    videoSender.replaceTrack(cameraTrack);
+                                }
+                            });
                         }
+                        
+                        showNotification('Демонстрация экрана завершена');
                     };
                     
                     showNotification('Демонстрация экрана начата');
                 } catch (error) {
                     console.error('Ошибка демонстрации экрана:', error);
-                    if (error.name !== 'NotAllowedError') {
-                        showNotification('Ошибка демонстрации экрана', true);
-                    }
                 }
-            } else {
-                screenStream.getTracks().forEach(track => track.stop());
-                screenStream = null;
-                btn.classList.remove('on');
-                document.getElementById('scr-' + myId)?.remove();
-                showNotification('Демонстрация экрана завершена');
             }
         }
         
-        // Чат и сообщения
+        // Чат
         function sendMsg() {
             const input = document.getElementById('c-in');
             const message = input.value.trim();
-            
             if (!message) return;
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                showNotification('Нет подключения к серверу', true);
-                return;
+            
+            if (ws) {
+                ws.send(JSON.stringify({
+                    type: 'chat',
+                    message: message
+                }));
             }
-            
-            console.log('Отправляю сообщение:', message);
-            
-            ws.send(JSON.stringify({
-                type: 'chat',
-                message: message,
-                messageType: 'text'
-            }));
             
             pushChat("Я", message);
             input.value = '';
@@ -720,14 +619,13 @@
             
             const reader = new FileReader();
             reader.onload = e => {
-                const imageData = e.target.result;
-                pushChat("Я", `<img src="${imageData}">`);
+                const img = `<img src="${e.target.result}">`;
+                pushChat("Я", img);
                 
-                if (ws && ws.readyState === WebSocket.OPEN) {
+                if (ws) {
                     ws.send(JSON.stringify({
                         type: 'chat',
-                        message: `<img src="${imageData}">`,
-                        messageType: 'image'
+                        message: img
                     }));
                 }
             };
@@ -735,25 +633,23 @@
             input.value = '';
         }
         
-        function sendEmoji(emoji) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
+        function sendEmoji(v) {
+            if (ws) {
                 ws.send(JSON.stringify({
                     type: 'chat',
-                    message: emoji,
-                    messageType: 'emoji'
+                    message: v
                 }));
             }
-            
-            pushChat("Я", emoji);
-            showFly(emoji);
+            pushChat("Я", v);
+            showFly(v);
         }
         
         function sendSFX() {
-            sfx.horn.play().catch(e => console.log('Ошибка воспроизведения звука'));
+            sfx.horn.play().catch(() => {});
             
-            if (ws && ws.readyState === WebSocket.OPEN) {
+            if (ws) {
                 ws.send(JSON.stringify({
-                    type: 'user-action',
+                    type: 'action',
                     action: 'sfx',
                     value: 'horn'
                 }));
@@ -762,12 +658,28 @@
             showNotification('Сигнал отправлен!');
         }
         
+        // Интерфейс
+        function addBox(nick, ava, id, isMe = false, isScr = false) {
+            const bId = isScr ? 'scr-' + id : 'u-' + id;
+            if (document.getElementById(bId)) return;
+            
+            const b = document.createElement('div');
+            b.className = isScr ? 'u-box screen' : 'u-box';
+            b.id = bId;
+            b.innerHTML = `
+                ${!isScr ? `<div class="u-ava" id="ava-${id}" style="background-image:url(${ava})"></div>` : ''}
+                <div class="pulse-ring" id="p-${id}"></div>
+                <div class="u-nick">${isScr ? '🖥️ ' + nick : nick}</div>
+                ${!isMe ? `<div class="vol-ctrl">🔈<input type="range" class="vol-slider" min="0" max="1" step="0.1" value="1" oninput="setVol('${bId}', this.value)"></div>` : ''}
+                ${isScr ? `<button class="fs-btn" onclick="toggleFS('${bId}')">FS</button>` : ''}
+                <video id="vid-${bId}" autoplay playsinline ${isMe ? 'muted' : ''}></video>
+            `;
+            document.getElementById('stage').appendChild(b);
+        }
+        
         function pushChat(n, m) {
             const container = document.getElementById('msgs');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'm';
-            messageDiv.innerHTML = `<b>${n}:</b> ${m}`;
-            container.appendChild(messageDiv);
+            container.innerHTML += `<div class="m"><b>${n}</b>: ${m}</div>`;
             container.scrollTop = container.scrollHeight;
         }
         
@@ -784,30 +696,6 @@
             setTimeout(() => e.remove(), 2000);
         }
         
-        // Вспомогательные функции
-        function updateStatus(connected) {
-            const status = document.getElementById('ws-status');
-            status.textContent = connected ? '● ONLINE' : '● OFFLINE';
-            status.className = connected ? 'ws-status connected' : 'ws-status';
-        }
-        
-        function showNotification(message, isError = false) {
-            console.log('Уведомление:', message);
-            
-            const notification = document.createElement('div');
-            notification.className = 'notification';
-            notification.textContent = message;
-            notification.style.borderLeftColor = isError ? 'var(--red)' : 'var(--accent)';
-            
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-                notification.style.opacity = '0';
-                notification.style.transform = 'translateX(100%)';
-                setTimeout(() => notification.remove(), 300);
-            }, 3000);
-        }
-        
         function updateUserList(id, nick, add) {
             if (add) {
                 activeUsers.set(id, nick);
@@ -817,35 +705,25 @@
             
             const container = document.getElementById('u-items');
             container.innerHTML = '';
-            
-            activeUsers.forEach((name, userId) => {
+            activeUsers.forEach((name) => {
                 container.innerHTML += `<div class="u-item">● ${name}</div>`;
             });
         }
         
         function removeUser(userId) {
-            console.log('Удаляю пользователя:', userId);
-            
-            // Удаляем из интерфейса
             document.getElementById('u-' + userId)?.remove();
             document.getElementById('scr-' + userId)?.remove();
             updateUserList(userId, '', false);
             
-            // Закрываем соединение
             if (peerConnections.has(userId)) {
                 peerConnections.get(userId).close();
                 peerConnections.delete(userId);
-            }
-            
-            // Удаляем анализатор звука
-            if (audioAnalysers.has(userId)) {
-                audioAnalysers.delete(userId);
             }
         }
         
         function setVol(bId, v) {
             const video = document.getElementById('vid-' + bId);
-            if (video) video.volume = parseFloat(v);
+            if (video) video.volume = v;
         }
         
         function toggleFS(id) {
@@ -853,46 +731,50 @@
             el.classList.toggle('fullscreen');
         }
         
-        function handleUserAction(data) {
-            if (data.action === 'sfx' && data.value === 'horn') {
-                sfx.horn.play().catch(e => console.log('Ошибка воспроизведения звука'));
-                showNotification(`${data.fromNick} отправил сигнал!`);
-            }
+        function updateStatus(connected) {
+            const status = document.getElementById('ws-status');
+            status.textContent = connected ? '● ONLINE' : '● OFFLINE';
+            status.className = connected ? 'ws-status connected' : 'ws-status';
+        }
+        
+        function showNotification(message, isError = false) {
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.textContent = message;
+            notification.style.borderLeftColor = isError ? 'var(--red)' : 'var(--accent)';
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
         }
         
         function leaveRoom() {
-            if (confirm('Выйти из комнаты?')) {
-                if (ws) {
-                    ws.close();
-                }
-                
-                peerConnections.forEach(pc => pc.close());
-                if (localStream) localStream.getTracks().forEach(track => track.stop());
-                if (screenStream) screenStream.getTracks().forEach(track => track.stop());
-                
-                location.reload();
-            }
+            if (ws) ws.close();
+            peerConnections.forEach(pc => pc.close());
+            if (localStream) localStream.getTracks().forEach(t => t.stop());
+            if (screenStream) screenStream.getTracks().forEach(t => t.stop());
+            location.reload();
         }
         
-        // Анимация звезд (ваша оригинальная)
+        // Анимация звезд
         const canvas = document.getElementById('bg-canvas');
         const ctx = canvas.getContext('2d');
         let pts = [];
         
-        function initStars() {
-            window.onresize = () => {
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight;
-            };
-            window.onresize();
-            
-            for (let i = 0; i < 60; i++) {
-                pts.push({
-                    x: Math.random() * canvas.width,
-                    y: Math.random() * canvas.height,
-                    s: Math.random() * 1.5
-                });
-            }
+        window.onresize = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        };
+        window.onresize();
+        
+        for (let i = 0; i < 60; i++) {
+            pts.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                s: Math.random() * 1.5
+            });
         }
         
         function anim() {
@@ -910,15 +792,7 @@
             });
             requestAnimationFrame(anim);
         }
-        
-        initStars();
         anim();
-        
-        // Автофокус на поле ввода
-        document.getElementById('i-nick')?.focus();
-        document.getElementById('c-in')?.addEventListener('focus', function() {
-            this.select();
-        });
     </script>
 </body>
 </html>
