@@ -5,19 +5,20 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Добавляем заголовки CSP
+// Убираем ВСЕ ограничения CSP для теста
 app.use((req, res, next) => {
-    res.setHeader(
-        'Content-Security-Policy',
-        "default-src 'self'; " +
-        "img-src 'self' data: https: http: blob:; " +
-        "media-src 'self' blob:; " +
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-        "font-src 'self' https://fonts.gstatic.com; " +
-        "connect-src 'self' wss: ws:; " +
-        "frame-src 'self'"
+    res.setHeader('Content-Security-Policy', 
+        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+        "img-src * data: blob: 'unsafe-inline'; " +
+        "media-src * data: blob:; " +
+        "script-src * 'unsafe-inline' 'unsafe-eval'; " +
+        "style-src * 'unsafe-inline'; " +
+        "font-src * data:; " +
+        "connect-src * ws: wss:;"
     );
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     next();
 });
 
@@ -30,28 +31,22 @@ app.get('/', (req, res) => {
 });
 
 // Запускаем HTTP сервер
-const server = app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`👉 Open: http://localhost:${PORT}`);
 });
 
 // WebSocket сервер
 const wss = new WebSocket.Server({ server });
-const rooms = {}; // { roomId: [клиенты] }
-const clients = {}; // { ws: { roomId, userId, nick } }
+const rooms = {};
+const clients = {};
 
 wss.on('connection', (ws, req) => {
-    console.log('New client connected from:', req.socket.remoteAddress);
-    
-    // Добавляем обработку origin если нужно
-    const origin = req.headers.origin;
-    if (origin && !origin.includes('railway')) {
-        console.log('Connection from non-railway origin:', origin);
-    }
+    console.log('🔗 New WebSocket connection');
     
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
-            console.log('Received:', data.type);
             
             switch(data.type) {
                 case 'join':
@@ -68,32 +63,25 @@ wss.on('connection', (ws, req) => {
                     break;
             }
         } catch (err) {
-            console.error('Error parsing message:', err);
+            console.error('❌ Error:', err);
         }
     });
     
     ws.on('close', () => {
         handleLeave(ws);
-        console.log('Client disconnected');
-    });
-    
-    ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
+        console.log('🔌 Client disconnected');
     });
 });
 
 function handleJoin(ws, data) {
     const { roomId, userId, nick } = data;
     
-    if (!rooms[roomId]) {
-        rooms[roomId] = [];
-    }
+    if (!rooms[roomId]) rooms[roomId] = [];
     
-    // Сохраняем информацию о клиенте
     clients[ws] = { roomId, userId, nick };
     rooms[roomId].push({ ws, userId, nick });
     
-    // Отправляем список участников новому пользователю
+    // Отправляем список участников
     const usersInRoom = rooms[roomId].map(client => ({
         userId: client.userId,
         nick: client.nick
@@ -105,7 +93,7 @@ function handleJoin(ws, data) {
         yourId: userId
     }));
     
-    // Уведомляем других участников о новом пользователе
+    // Уведомляем других
     rooms[roomId].forEach(client => {
         if (client.ws !== ws && client.ws.readyState === WebSocket.OPEN) {
             client.ws.send(JSON.stringify({
@@ -116,7 +104,7 @@ function handleJoin(ws, data) {
         }
     });
     
-    console.log(`${nick} joined room ${roomId}`);
+    console.log(`👤 ${nick} joined room ${roomId}`);
 }
 
 function handleSignal(ws, data) {
@@ -124,8 +112,6 @@ function handleSignal(ws, data) {
     if (!client) return;
     
     const { to, signal } = data;
-    
-    // Находим получателя
     const room = rooms[client.roomId];
     if (!room) return;
     
@@ -148,7 +134,6 @@ function handleChat(ws, data) {
     const room = rooms[client.roomId];
     if (!room) return;
     
-    // Рассылаем сообщение всем в комнате
     room.forEach(clientInRoom => {
         if (clientInRoom.ws.readyState === WebSocket.OPEN) {
             clientInRoom.ws.send(JSON.stringify({
@@ -168,15 +153,12 @@ function handleLeave(ws) {
     
     const { roomId, userId } = client;
     
-    // Удаляем из комнаты
     if (rooms[roomId]) {
         rooms[roomId] = rooms[roomId].filter(c => c.ws !== ws);
         
-        // Если комната пустая, удаляем ее
         if (rooms[roomId].length === 0) {
             delete rooms[roomId];
         } else {
-            // Уведомляем остальных
             rooms[roomId].forEach(clientInRoom => {
                 if (clientInRoom.ws.readyState === WebSocket.OPEN) {
                     clientInRoom.ws.send(JSON.stringify({
@@ -188,23 +170,6 @@ function handleLeave(ws) {
         }
     }
     
-    // Удаляем клиента
     delete clients[ws];
-    
-    console.log(`${userId} left room ${roomId}`);
+    console.log(`👋 ${userId} left room`);
 }
-
-// Обработка ошибок сервера
-server.on('error', (error) => {
-    console.error('Server error:', error);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully');
-    wss.close();
-    server.close(() => {
-        console.log('Server closed');
-        process.exit(0);
-    });
-});
